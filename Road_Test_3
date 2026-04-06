@@ -1,0 +1,107 @@
+/*
+ Honor Pledge: I pledge my honor that I have abided by the Stevens Honor System.
+*/
+
+//Import necessary libraries
+#include <SSD1306Wire.h>
+#include <Wire.h>
+#include <Ultrasonic.h>
+#include <Servo.h>
+
+// Creating obects for both motors, dispaly, and sensors
+Servo motor_left;
+Servo motor_right;
+SSD1306Wire display(0x3C, D2, D1);
+Ultrasonic ultrasonic_front(D5, D8);
+Ultrasonic ultrasonic_right(D4, D7);
+Ultrasonic ultrasonic_left(TX, D0);
+
+// Initializing data variables for use in program
+const int STOP_DISTANCE_CM = 30;
+int data = 150;
+int dist_cm;
+
+// Stop robot function to stop both motors
+void stopRobot() {
+  motor_left.write(90);
+  motor_right.write(90);
+}
+
+//turn around function, moves motors in opposite directions to turn the robot around in place, 500 ms delay to ensure motor innstruction execution
+void turnAround(){
+  motor_left.write(30);
+  motor_right.write(150);
+  delay(1200);
+  motor_left.write(180);
+  motor_right.write(140);
+  delay(10);
+}
+
+// Intializing setup for the robot
+void setup() {
+  //Serial.begin(115200);
+  motor_left.attach(D6);
+  motor_right.attach(D3);
+  display.init();
+  display.flipScreenVertically();
+  delay(300);
+
+}
+
+void loop() {
+
+     int dist_cm_front = ultrasonic_front.read(CM);
+     delay(10);
+     int dist_cm_right = ultrasonic_right.read(CM);
+     delay(10);
+     int dist_cm_left = ultrasonic_left.read(CM);
+     delay(10);
+
+// If distance < stop_distance turn the robot around (prepare to traverse back to start)
+    
+    if (dist_cm <= STOP_DISTANCE_CM ) {
+     motor_left.write(90);
+     motor_right.write(90);
+     delay(1000);
+     turnAround();
+    } 
+    else {
+      //move robot forward until wall detected
+     motor_left.write(180);
+     motor_right.write(140);
+     delay(1000);
+    }
+
+// Formatting data into strings to send to OLED Display
+   // char distbuf[50];
+   // sprintf(distbuf, "%d", dist_cm);
+   // const char *d = distbuf;
+
+   // char lbuf[50];
+    //sprintf(lbuf, "%d", motor_left.read());
+  //  const char *l = lbuf;
+
+   // char rbuf[50];
+  //  sprintf(rbuf, "%d", motor_right.read());
+  //  const char *r = rbuf;
+
+// Pushing data to OLED Display
+    display.setFont(ArialMT_Plain_16);
+    display.drawString(0, 0, "Front: ");
+    display.drawString(0, 18, "Right: ");
+    display.drawString(0, 36, "Left: ");
+
+  //  display.drawString(90, 0, l);
+   // display.drawString(90, 18, r);
+   // display.drawString(90, 36, d);
+
+    // another way to display
+    display.drawString(90, 0, String(dist_cm_front));
+    display.drawString(90, 18, String(dist_cm_right));
+    display.drawString(90, 36, String(dist_cm_left));
+
+    display.display();
+    display.clear();
+
+  delay(50);
+}
