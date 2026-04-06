@@ -1,0 +1,112 @@
+/*
+Name: Amresh Balakrishnan, Ava, Abuzer
+Honor Pledge:I pledge my honor that I have abided by the Stevens Honor System.
+*/
+
+//Importing necessary libraries
+#include <SSD1306Wire.h>
+#include <Wire.h>
+#include <Ultrasonic.h>
+#include <Servo.h>
+
+//defining permanent pins for motors
+#define motor_right_pin D3
+#define motor_left_pin  D6
+
+//Creating objects for both motors, ultrasonic sensors, and OLED display (from servo library)
+Servo motor_right;
+Servo motor_left;
+
+SSD1306Wire display(0x3C, D2, D1);
+
+Ultrasonic ultrasonic_front(D5, D8);
+Ultrasonic ultrasonic_left(Tx, D0);
+Ultrasonic ultrasonic_right(D4, D7);
+
+int distance;
+int left_motor_speed_parameter  = 150;
+int right_motor_speed_parameter = 150;
+
+// Instance variables --> for use later on in loop function
+const int STOP_VAL = 90;
+
+const int BASE_SPEED = 155;
+const int MIN_SPEED  = 120;
+const int MAX_SPEED  = 175;
+
+const int TARGET_DIST = 22;
+const int right_hand_distance = 10;
+
+// Setup code, runs everything the Robot is started
+void setup() {
+  Serial.begin(115200);
+  motor_right.attach(motor_right_pin);
+  motor_left.attach(motor_left_pin);
+  display.init();
+  display.flipScreenVertically();
+    delay(100);
+}
+
+void loop() {
+  // Reads data from ultrasnoic sensor
+  int dist_cm_front = ultrasonic_front.read(CM);
+  int dist_cm_right = ultrasonic_right.read(CM);
+
+  //Left turn mechanism
+  if (dist_cm_front <= TARGET_DIST) {
+    left_motor_speed_parameter = MIN_SPEED;
+    right_motor_speed_parameter = BASE_SPEED;
+    motor_left.write(left_motor_speed_parameter);
+    motor_right.write(right_motor_speed_parameter);
+    delay(1500);
+  } 
+  else if (dist_cm_right > right_hand_distance){
+    left_motor_speed_parameter = MAX_SPEED;
+    right_motor_speed_parameter = BASE_SPEED;
+    motor_left.write(left_motor_speed_parameter);
+    motor_right.write(right_motor_speed_parameter);
+    delay(500);
+  }
+  else if (dist_cm_right < right_hand_distance){
+    left_motor_speed_parameter = BASE_SPEED;
+    right_motor_speed_parameter = MAX_SPEED;
+    motor_left.write(left_motor_speed_parameter);
+    motor_right.write(right_motor_speed_parameter);
+    delay(500)
+  }
+  else if (dist_cm_front > TARGET_DIST) {  //Robot moves straight forward
+    left_motor_speed_parameter = BASE_SPEED;
+    right_motor_speed_parameter = BASE_SPEED;
+    motor_left.write(left_motor_speed_parameter);
+    motor_right.write(right_motor_speed_parameter);
+    delay(1000);
+  }
+
+
+
+  //Format Data as a String
+  char dist_str[50];
+  sprintf(dist_str, "%d", dist_cm_front);
+  const char *d = dist_str;
+
+  char lbuf[50];
+  sprintf(lbuf, "%d", left_motor_speed_parameter);
+  const char *l = lbuf;
+
+  char rbuf[50];
+  sprintf(rbuf, "%d", right_motor_speed_parameter);
+  const char *r = rbuf;
+
+  // Display data to OLED Display
+  display.clear();
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(0, 0, "L Motor:");
+  display.drawString(0, 18, "R Motor:");
+  display.drawString(0, 36, "Dist(cm):");
+  display.drawString(80, 0, l);
+  display.drawString(80, 18, r);
+  display.drawString(80, 36, d);
+  display.display();
+
+  delay(50);
+}
