@@ -30,11 +30,13 @@ void stopRobot() {
 //turn around function, moves motors in opposite directions to turn the robot around in place, 500 ms delay to ensure motor innstruction execution
 void turnAround(){
   motor_left.write(30);
+  delay(20);
   motor_right.write(150);
   delay(1200);
   motor_left.write(180);
+  delay(20);
   motor_right.write(140);
-  delay(10);
+  delay(20);
 }
 
 // Intializing setup for the robot
@@ -51,23 +53,25 @@ void setup() {
 void loop() {
 
      int dist_cm_front = ultrasonic_front.read(CM);
-     delay(10);
+     delay(20);
      int dist_cm_right = ultrasonic_right.read(CM);
-     delay(10);
+     delay(20);
      int dist_cm_left = ultrasonic_left.read(CM);
-     delay(10);
+     delay(20);
 
 // If distance < stop_distance turn the robot around (prepare to traverse back to start)
     
     if (dist_cm <= STOP_DISTANCE_CM ) {
      motor_left.write(90);
+     delay(20);
      motor_right.write(90);
-     delay(1000);
+     delay(20);
      turnAround();
     } 
     else {
       //move robot forward until wall detected
      motor_left.write(180);
+     delay(20);
      motor_right.write(140);
      delay(1000);
     }
@@ -101,6 +105,7 @@ void loop() {
     display.drawString(90, 36, String(dist_cm_left));
 
     display.display();
+    delay(100);
     display.clear();
 
   delay(50);
