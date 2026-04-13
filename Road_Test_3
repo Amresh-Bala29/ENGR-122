@@ -29,7 +29,7 @@ void stopRobot() {
 void turnAround(){
   motor_left.write(70);
   motor_right.write(110);
-  delay(1700);
+  delay(1500);
   motor_left.write(90);
   motor_right.write(90);
   delay(40);
@@ -39,8 +39,8 @@ void turnAround(){
 // Intializing setup for the robot
 void setup() {
   //Serial.begin(115200);
-  motor_left.attach(D6);
-  motor_right.attach(D3);
+  motor_left.attach(D3);
+  motor_right.attach(D6);
   motor_left.write(90);
   motor_right.write(90);
   display.init();
@@ -65,8 +65,8 @@ void loop() {
     } 
     else {
       //move robot forward until wall detected
-     motor_left.write(130);
-     motor_right.write(130);
+     motor_left.write(121);
+     motor_right.write(120);
      delay(40);
     }
 
