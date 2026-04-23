@@ -1,0 +1,27 @@
+
+//Reading data from ultrasonic sensors
+  int dist_mm_front = ultrasonic_front.read(CM) * 10;
+  int dist_mm_right = ultrasonic_right.read(CM) * 10;
+  int dist_mm_left = ultrasonic_left.read(CM) * 10;
+  delay(10);
+
+motor_left.write(120);
+motor_right.write(121);
+
+
+int target_x = x_targets[target_index];
+int target_y = y_targets[target_index];
+
+//Distance equations
+float dx = target_x - x_robot;
+float dy = target_y - y_robot;
+dist_to_target = sqrt(dx * dx + dy * dy);
+
+float target_angle = atan2(dy,dx) * 180.0/PI;
+angle_error = target_angle - z_ang_robot;
+if(angle_error > 180) angle_error -= 360;
+if(angle_error < -180) angle_error += 360;
+
+if(dist_to_target < 70){
+  stopRobot();
+}
