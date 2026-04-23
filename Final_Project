@@ -10,6 +10,8 @@
  *  -Students must integrate these algorithms to control the two motors so that the robot can reach designated targets. 
  *  -The OLED display should be used for debugging purposes.
  *=========================================================================================================================*/
+ //Names: Amresh,Ava, Abuzer
+ //Pledge: We pledge our honor that we have abided by the Stevens Honor System. 
 //Required libraries
 #include "MQTT.h"
 #include <SSD1306Wire.h>
@@ -27,26 +29,27 @@ Ultrasonic ultrasonic_right(D4, D7);
 Ultrasonic ultrasonic_left(TX, D0);
 
 //Constant Variables
-const int FRONT_STOP_DISTANCE_CM = 18;
-const int RIGHT_STOP_DISTANCE_CM = 9;
-const int LEFT_STOP_DISTANCE_CM = 9;
+const int FRONT_STOP_DISTANCE_MM = 120;
+const int RIGHT_STOP_DISTANCE_MM = 100;
+const int LEFT_STOP_DISTANCE_MM = 100;
 const int TARGET_REACHED_RADIUS = 100; // 10cm = 100mm
 const int TARGET_HOLD_TIME = 2000;
 
 
 //Target List --> need to replace with actual values before competition
-const int x_targets[] = {1450, 200, 200, 650}; //Sample x-coordinates for targets
-const int y_targets[] = { 150, 600, 150, 150}; //Sample y-coordinates for targets
+const int x_targets[] = {750, 1650, 2220, 150}; //Sample x-coordinates for targets
+const int y_targets[] = { 730, 150, 650, 150}; //Sample y-coordinates for targets
+const int sp_value[] = {190,590};
 const int NUM_TARGETS = sizeof(x_targets) / sizeof(x_targets[0]); //number of targets in array --> total data bytes/ 1 int byes = # on ints in array
-
 int target_index = 0;
+
 float x_robot;
 float y_robot;
 float z_ang_robot;
-float dist_to_target = 0;
-float angle_error = 0;
+float dist_to_target;
+float angle_error;
 
-bool mission_complete = false;
+bool all_targets_reached = false;
 
 //-----------------------------------------------------------------------------------------------------------
 // Don't touch --> MQTT Setting (Common configuration used across both South Arena and North Arena systems)
@@ -62,6 +65,8 @@ const char* ssid       = "TP-Link_8FFD";       //North Arena Check the router on
 const char* password   = "68287078";           //North Arena Check the router on the TA desk.
 //const char* ssid     = "TP-Link_9402";         //South Arena Check the router on the TA desk.
 //const char* password = "77556578";             //South Arena Check the router on the TA desk.
+//const char* ssid = TP-Link_7310; //upstairs room ssid
+//const char* password = 74952359; //upstairs room pass
 //-----------------------------------------------------------------------------------------------------------
 
 //Global Scope Functions --> for later use in logic control
@@ -107,20 +112,16 @@ void leftCorrection(){
   delay(20);
 }
 
+void reverse(){
+  motor_left.write(80);
+  motor_right.write(80);
+  delay(600);
+}
+
 void rightCorrection(){
   motor_left.write(123);
   motor_right.write(120);
   delay(20);
-}
-
-float wrapAngle(float angle_deg){
-  while(angle_deg > 180){
-    angle_deg -= 360;
-  }
-  while(angle_deg < -180){
-    angle_deg += 360;
-  }
-  return angle_deg;
 }
 
 void finishLoop(unsigned long stamp){
@@ -129,7 +130,7 @@ void finishLoop(unsigned long stamp){
 }
 // Intializing setup for the robot
 void setup() {
-  Serial.begin(115200);
+  //Serial.begin(115200);
   motor_left.attach(D3);
   motor_right.attach(D6);
   motor_left.write(90);
@@ -143,28 +144,33 @@ void setup() {
 
 }
 
+int recent_movement = 0;
+const int movement_Delay = 350;
+
 void loop() {
   unsigned long stamp = millis();
   mqtt_rebound();
   client.loop();
 
 //Reading data from ultrasonic sensors
-  int dist_cm_front = ultrasonic_front.read(CM);
-  int dist_cm_right = ultrasonic_right.read(CM);
-  int dist_cm_left = ultrasonic_left.read(CM);
-  delay(20);
+  int dist_mm_front = ultrasonic_front.read(CM) * 10;
+  int dist_mm_right = ultrasonic_right.read(CM) * 10;
+  int dist_mm_left = ultrasonic_left.read(CM) * 10;
+  delay(10);
 
 //Control Logic
 
 //End route --> all targets hit
- if(mission_complete == true || target_index >= NUM_TARGETS){
-    mission_complete = true;
+ if(all_targets_reached == true || target_index >= NUM_TARGETS){
+    all_targets_reached = true;
     stopRobot();
     finishLoop(stamp);
     return;
  }
 
 //Checking current target
+if(target_index < 4){
+
 int target_x = x_targets[target_index];
 int target_y = y_targets[target_index];
 
@@ -172,6 +178,12 @@ int target_y = y_targets[target_index];
 float dx = target_x - x_robot;
 float dy = target_y - y_robot;
 dist_to_target = sqrt(dx * dx + dy * dy);
+
+//Path finding algorthm 
+float target_angle = atan2(dy,dx) * 180.0/PI;
+angle_error = target_angle - z_ang_robot;
+if(angle_error > 180) angle_error -= 360;
+if(angle_error < -180) angle_error += 360;
 
 //When target reached
 if(dist_to_target <= TARGET_REACHED_RADIUS){
@@ -183,57 +195,48 @@ if(dist_to_target <= TARGET_REACHED_RADIUS){
 }
 
 //Obstacle Avoidance Logic
-if (dist_cm_front <= FRONT_STOP_DISTANCE_CM){
+if (dist_mm_front <= FRONT_STOP_DISTANCE_MM){
   stopRobot();
   delay(10);
-  if(dist_cm_left > LEFT_STOP_DISTANCE_CM && dist_cm_right <= RIGHT_STOP_DISTANCE_CM){
+  if(dist_mm_left <= LEFT_STOP_DISTANCE_MM && dist_mm_right <= RIGHT_STOP_DISTANCE_MM){
+    reverse();
+  }
+  else if(dist_mm_left > LEFT_STOP_DISTANCE_MM && dist_mm_right <= RIGHT_STOP_DISTANCE_MM){
     turnLeft();
   }
-  else if(dist_cm_right > RIGHT_STOP_DISTANCE_CM && dist_cm_left <= LEFT_STOP_DISTANCE_CM){
+  else if(dist_mm_right > RIGHT_STOP_DISTANCE_MM && dist_mm_left <= LEFT_STOP_DISTANCE_MM){
     turnRight();
   }
-  else if(dist_cm_left > dist_cm_right + 2){
+  else if(dist_mm_left > dist_mm_right + 60){
     turnLeft();
   }
-  else if(dist_cm_right > dist_cm_left + 2){
+  else if(dist_mm_right > dist_mm_left + 60){
     turnRight();
   }
   else{
-    turnAround();
+    if (angle_error >= 0){
+      turnLeft();
+    }
+    else{
+      turnRight();
   }
 }
-else if(dist_cm_left <= LEFT_STOP_DISTANCE_CM && dist_cm_right > RIGHT_STOP_DISTANCE_CM){
-  rightCorrection();
-}
-else if(dist_cm_right <= RIGHT_STOP_DISTANCE_CM && dist_cm_left > LEFT_STOP_DISTANCE_CM){
-  leftCorrection();
-}
-else if(dist_cm_left <= LEFT_STOP_DISTANCE_CM && dist_cm_right <= RIGHT_STOP_DISTANCE_CM){
-  if(dist_cm_left > dist_cm_right){
-    turnLeft();
-  }
-  else{
-    turnRight();
-  }
 }
 else{
-  //Calculating angle error
-  float target_angle = atan2(dy,dx) * 180.0/PI;
-  angle_error = wrapAngle(target_angle - z_ang_robot);
-
-  //Navigation with angle measurements
-  if (angle_error > 20){
-    leftCorrection();
-  }
-  else if(angle_error < -20){
-    rightCorrection();
-  }
-  else{
+    if (angle_error >= 20){
+      leftCorrection();
+    }
+    else if(angle_error <= -20){
+      rightCorrection();
+    }
+    else{
     motor_left.write(121);
     motor_right.write(120);
     delay(20);
+    }
   }
-}
+
+
 // Pushing headers to OLED Display
   display.setFont(ArialMT_Plain_16);
   display.drawString(0, 0, "Front: ");
@@ -242,9 +245,9 @@ else{
 
  
 // Publishing sensor data to OLED Display
-  display.drawString(90, 0, String(dist_cm_front));
-  display.drawString(90, 18, String(dist_cm_right));
-  display.drawString(90, 36, String(dist_cm_left));
+  display.drawString(90, 0, String(dist_mm_front));
+  display.drawString(90, 18, String(dist_mm_right));
+  display.drawString(90, 36, String(dist_mm_left));
 
   display.display();
   delay(10);
@@ -253,4 +256,5 @@ else{
   mqtt_clean();
   while (millis() - stamp < 100){delay(5);}   //Sticks into an empty loop until it has been more than 100ms.
 
+}
 }
