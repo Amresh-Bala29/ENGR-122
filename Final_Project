@@ -1,260 +1,240 @@
 /*========================================================================================================================
  * Ver.1 – 03/02/2026 SES IDEAs Program 
- * 2026S ENGR122 Sample Code for Final Project 
+ * 2026S ENGR122 Sample Code for Week 7 Activity & Final Project 
  * Camera Sensor–Based Position Feedback using MQTT Network
  *
  * This sketch is provided as a baseline for the Week 7 lab activity and Final Project
+ * Week7 Activity:
+ *  -Based on this baseline code, students must complete the program to display the robot's position on the OLED display.
  * Final  Project:
  *  -Using the ultrasonic sensor, students must design an Obstacle Avoidance logic.
  *  -Using camera-sensor data received through the MQTT network, students must implement a Path-Planning algorithm.
  *  -Students must integrate these algorithms to control the two motors so that the robot can reach designated targets. 
  *  -The OLED display should be used for debugging purposes.
  *=========================================================================================================================*/
- //Names: Amresh,Ava, Abuzer
+
+ //Names: Amresh, Ava, Abuzer
  //Pledge: We pledge our honor that we have abided by the Stevens Honor System. 
-//Required libraries
+
+//(NOTE!) Include all required libraries here
 #include "MQTT.h"
-#include <SSD1306Wire.h>
 #include <Wire.h>
+#include <SSD1306Wire.h>
 #include <Ultrasonic.h>
-#include <Servo.h>
+#include <Servo.h> 
 #include <math.h>
 
-//Creation of hardware objects --> OLED, Sensors, Motors
+
+//(NOTE!) You may create any additional objects needed for OLED, Sensors, or Motors here
+
+//motor pins --> don't change
+#define motor_left_pin D3
+#define motor_right_pin D6
+
+// object creation for motors
 Servo motor_left;
 Servo motor_right;
-SSD1306Wire display(0x3C, D2, D1);
-Ultrasonic ultrasonic_front(D5, D8);
+
+//object creation for ultrasonic sensors
+Ultrasonic ultrasonic_middle(D5, D8);
 Ultrasonic ultrasonic_right(D4, D7);
 Ultrasonic ultrasonic_left(TX, D0);
 
-//Constant Variables
-const int FRONT_STOP_DISTANCE_MM = 120;
-const int RIGHT_STOP_DISTANCE_MM = 100;
-const int LEFT_STOP_DISTANCE_MM = 100;
-const int TARGET_REACHED_RADIUS = 100; // 10cm = 100mm
-const int TARGET_HOLD_TIME = 2000;
+//object creation for OLED display
+SSD1306Wire display(0x3C, D2, D1);
 
+//target coordinates w/ 4 midpoints placed in 
+const int x_targets[] = {689, 1566, 2000, 2133, 545, 155};//Sample x-coordinates for targets
+const int y_targets[] = {677, 139, 100, 623, 410, 138};//Sample y-coordinates for targets
 
-//Target List --> need to replace with actual values before competition
-const int x_targets[] = {750, 1650, 2220, 150}; //Sample x-coordinates for targets
-const int y_targets[] = { 730, 150, 650, 150}; //Sample y-coordinates for targets
-const int sp_value[] = {190,590};
-const int NUM_TARGETS = sizeof(x_targets) / sizeof(x_targets[0]); //number of targets in array --> total data bytes/ 1 int byes = # on ints in array
+// target reached counter
 int target_index = 0;
 
-float x_robot;
-float y_robot;
-float z_ang_robot;
-float dist_to_target;
-float angle_error;
+//_________________________________________________________________________
 
-bool all_targets_reached = false;
-
-//-----------------------------------------------------------------------------------------------------------
-// Don't touch --> MQTT Setting (Common configuration used across both South Arena and North Arena systems)
+//MQTT Setting --> DO NOT TOUCH
 const char* mqtt_server   = "192.168.0.2";     
 const char* mqtt_username = "user";      
 const char* mqtt_password = "Stevens1870";
 const int mqtt_port = 1883;
+
 //MQTT Topic 
 const String topic     = "EAS011_North";       //North Arena
-//const String topic   = "EAS011_South";       //South Arena
+//const String topic   = "EAS011_South";       //South Arena 
+//const String topic = "SmartArena";    //Integration Lab
+
 //WiFi Setting 
 const char* ssid       = "TP-Link_8FFD";       //North Arena Check the router on the TA desk.
 const char* password   = "68287078";           //North Arena Check the router on the TA desk.
 //const char* ssid     = "TP-Link_9402";         //South Arena Check the router on the TA desk.
 //const char* password = "77556578";             //South Arena Check the router on the TA desk.
-//const char* ssid = TP-Link_7310; //upstairs room ssid
-//const char* password = 74952359; //upstairs room pass
-//-----------------------------------------------------------------------------------------------------------
+//const char* ssid = "TP-Link_7310";    //Integration Lab
+//const char* password = "74952359";    //Integration Lab
+//__________________________________________________________________________
 
-//Global Scope Functions --> for later use in logic control
-// Stop robot function to stop both motors
-void stopRobot() {
-  motor_left.write(90);
-  motor_right.write(90);
-}
+//target values --> from ArDuco markers
+float x_robot, y_robot, z_ang_robot;
 
-//turn around function, moves motors in opposite directions to turn the robot around in place, 500 ms delay to ensure motor innstruction execution
+//(NOTE!) You may add additional variables here as needed, but carefully consider variable scope (gloval vs. local)
 
-void turnAround(){
-  motor_left.write(70);
-  motor_right.write(110);
-  delay(1500);
-  motor_left.write(90);
-  motor_right.write(90);
-  delay(20);
+//values from ultrasonic sensors 
 
-}
+int distance_middle;
+int distance_right;
+int distance_left;
 
-void turnLeft(){
-  motor_left.write(70);
-  motor_right.write(110);
-  delay(720);
-  motor_left.write(90);
-  motor_right.write(90);
-  delay(20);
-}
+//setup --> runs every robot start
 
-void turnRight(){
-  motor_left.write(110);
-  motor_right.write(70);
-  delay(720);
-  motor_left.write(90);
-  motor_right.write(90);
-  delay(20);
-}
-
-void leftCorrection(){
-  motor_left.write(120);
-  motor_right.write(123);
-  delay(20);
-}
-
-void reverse(){
-  motor_left.write(80);
-  motor_right.write(80);
-  delay(600);
-}
-
-void rightCorrection(){
-  motor_left.write(123);
-  motor_right.write(120);
-  delay(20);
-}
-
-void finishLoop(unsigned long stamp){
-  mqtt_clean();
-  while (millis() - stamp < 100){delay(5);} 
-}
-// Intializing setup for the robot
 void setup() {
-  //Serial.begin(115200);
-  motor_left.attach(D3);
-  motor_right.attach(D6);
-  motor_left.write(90);
-  motor_right.write(90);
-  Wire.begin();
-  wifi_mqtt_init();
-  mqtt_clean();
-  display.init();
-  display.flipScreenVertically();
-  delay(TARGET_HOLD_TIME);
+    Wire.begin();
+    delay(25);
+    wifi_mqtt_init();
+    mqtt_clean();
+    delay(500);
+    display.init();
+    display.flipScreenVertically();
+    motor_left.attach(motor_left_pin);
+    motor_right.attach(motor_right_pin);
+    motor_left.write(90);
+    motor_right.write(90);
+    delay(2000);
 
 }
 
-int recent_movement = 0;
-const int movement_Delay = 350;
-
-void loop() {
-  unsigned long stamp = millis();
-  mqtt_rebound();
-  client.loop();
-
-//Reading data from ultrasonic sensors
-  int dist_mm_front = ultrasonic_front.read(CM) * 10;
-  int dist_mm_right = ultrasonic_right.read(CM) * 10;
-  int dist_mm_left = ultrasonic_left.read(CM) * 10;
-  delay(10);
-
-//Control Logic
-
-//End route --> all targets hit
- if(all_targets_reached == true || target_index >= NUM_TARGETS){
-    all_targets_reached = true;
-    stopRobot();
-    finishLoop(stamp);
-    return;
- }
-
-//Checking current target
-if(target_index < 4){
-
-int target_x = x_targets[target_index];
-int target_y = y_targets[target_index];
-
-//Distance equations
-float dx = target_x - x_robot;
-float dy = target_y - y_robot;
-dist_to_target = sqrt(dx * dx + dy * dy);
-
-//Path finding algorthm 
-float target_angle = atan2(dy,dx) * 180.0/PI;
-angle_error = target_angle - z_ang_robot;
-if(angle_error > 180) angle_error -= 360;
-if(angle_error < -180) angle_error += 360;
-
-//When target reached
-if(dist_to_target <= TARGET_REACHED_RADIUS){
-  stopRobot();
-  delay(TARGET_HOLD_TIME);
-  target_index++;
-  finishLoop(stamp);
-  return;
+// move robot forward
+void forward(){
+    motor_left.write(110);
+    motor_right.write(109);
 }
 
-//Obstacle Avoidance Logic
-if (dist_mm_front <= FRONT_STOP_DISTANCE_MM){
-  stopRobot();
-  delay(10);
-  if(dist_mm_left <= LEFT_STOP_DISTANCE_MM && dist_mm_right <= RIGHT_STOP_DISTANCE_MM){
-    reverse();
-  }
-  else if(dist_mm_left > LEFT_STOP_DISTANCE_MM && dist_mm_right <= RIGHT_STOP_DISTANCE_MM){
-    turnLeft();
-  }
-  else if(dist_mm_right > RIGHT_STOP_DISTANCE_MM && dist_mm_left <= LEFT_STOP_DISTANCE_MM){
-    turnRight();
-  }
-  else if(dist_mm_left > dist_mm_right + 60){
-    turnLeft();
-  }
-  else if(dist_mm_right > dist_mm_left + 60){
-    turnRight();
-  }
-  else{
-    if (angle_error >= 0){
-      turnLeft();
-    }
-    else{
-      turnRight();
-  }
+// stop robot --> cut both motors
+void stop(){
+    motor_left.write(90);
+    motor_right.write(90);
 }
-}
-else{
-    if (angle_error >= 20){
-      leftCorrection();
-    }
-    else if(angle_error <= -20){
-      rightCorrection();
-    }
-    else{
-    motor_left.write(121);
+
+// adjust robot orientation to the left
+void left_correction(){
+    motor_left.write(107);
     motor_right.write(120);
-    delay(20);
+}
+
+//adjust robot orientation to the right
+void right_correction(){
+    motor_left.write(120);
+    motor_right.write(107);
+}
+
+// turn robot 90 degrees to the left
+void turn_left(){
+    motor_left.write(70);
+    motor_right.write(110);
+    delay(720);
+}
+
+// turn robot 90 degrees to the right
+void turn_right(){
+    motor_left.write(110);
+    motor_right.write(70);
+    delay(720);
+}
+
+// reverse the robot
+void reverse(){
+  motor_left.write(60);
+  motor_right.write(60);
+}
+
+//used to filter out misreads from the robot --> recommended by office hours TA
+unsigned long lastAction = 0;       // Timer for obstacle maneuvers
+const unsigned long actionDelay = 300; // Duration for reverse/turn in ms
+
+//loop --> runs continously when robot is powered on
+void loop() {
+    //MQTT network code --> provided by baseline code
+    unsigned long now = millis();
+    mqtt_rebound();
+    client.loop();
+
+    // 3 ultraosnic sensor readings 
+    distance_middle = ultrasonic_middle.read(CM);
+    delay(10);
+    distance_right  = ultrasonic_right.read(CM);
+    delay(10);
+    distance_left   = ultrasonic_left.read(CM);
+    delay(10);
+
+    // robot distance calculations
+    float dx = x_targets[target_index] - x_robot;   //distance between robot and target x-axis
+    float dy = y_targets[target_index] - y_robot;   //distance between robot and target y-axis
+    float distance_to_target = sqrt(dx*dx + dy*dy); //resultant vector produced by pythagorean theorem
+
+    //robot angle calculations
+    float desired_angle = atan2(dy, dx) * 180 / PI; //angle to point robot at target
+    float angle_error = desired_angle - z_ang_robot; //current angle error
+
+    // fit the robot angle between 180 
+    if(angle_error > 180) angle_error -= 360;
+    if(angle_error < -180) angle_error += 360;
+
+    // when all targets reached --> stop the robot
+    if(target_index >= 6){
+        stop();
+        delay(5000);
     }
-  }
 
+    // if not all targets have been reached --> run this loop
+    if(target_index < 6){
 
-// Pushing headers to OLED Display
-  display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 0, "Front: ");
-  display.drawString(0, 18, "Right: ");
-  display.drawString(0, 36, "Left: ");
+    // when robot close to target, stop the robot
+    if(distance_to_target < 100){
+            stop();
+            target_index++;
+            delay(2000);
+            lastAction = now;  
+        }
 
- 
-// Publishing sensor data to OLED Display
-  display.drawString(90, 0, String(dist_mm_front));
-  display.drawString(90, 18, String(dist_mm_right));
-  display.drawString(90, 36, String(dist_mm_left));
+    //Collision Logic
+    if(distance_middle < 16){
+        if(distance_left < distance_right){
+            turn_right();
+            delay(10);
+        }
+        else {
+            turn_left();
+            delay(10);
+    }
+}
+    if(distance_left < 8){
+        right_correction();
+    }
+    if(distance_right < 8){
+        left_correction();
+    }
 
-  display.display();
-  delay(10);
-  display.clear();
-
-  mqtt_clean();
-  while (millis() - stamp < 100){delay(5);}   //Sticks into an empty loop until it has been more than 100ms.
+    // Path finding logic
+    if(angle_error > 15){
+        left_correction();
+    }
+    else if(angle_error < -15){
+        right_correction();
+    }
+    else{
+        // if no correction needed --> go straight
+        forward();
+    }
 
 }
+    //print to OLED display --> sensor data and Angle error
+    display.setFont(ArialMT_Plain_10);
+    display.clear();
+    display.drawString(0, 0, "Ultra_Middle: " + String(distance_middle));
+    display.drawString(0, 15, "Ultra_Left: " + String(distance_left));
+    display.drawString(0, 30, "Ultra_Right: " + String(distance_right));
+    display.drawString(0, 45, "Angle_Error: " + String(angle_error));
+    display.display();
+
+// MQTT settings --> provided by the basline code
+    mqtt_clean();
+    while (millis() - now < 100){delay(5);}
 }
